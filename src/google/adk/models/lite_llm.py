@@ -314,33 +314,28 @@ def _get_content(
     ):
       base64_string = base64.b64encode(part.inline_data.data).decode("utf-8")
       data_uri = f"data:{part.inline_data.mime_type};base64,{base64_string}"
+      # LiteLLM providers extract the MIME type from the data URI; avoid
+      # passing a separate `format` field that some backends reject.
 
       if part.inline_data.mime_type.startswith("image"):
-        # Use full MIME type (e.g., "image/png") for providers that validate it
-        format_type = part.inline_data.mime_type
         content_objects.append({
             "type": "image_url",
-            "image_url": {"url": data_uri, "format": format_type},
+            "image_url": {"url": data_uri},
         })
       elif part.inline_data.mime_type.startswith("video"):
-        # Use full MIME type (e.g., "video/mp4") for providers that validate it
-        format_type = part.inline_data.mime_type
         content_objects.append({
             "type": "video_url",
-            "video_url": {"url": data_uri, "format": format_type},
+            "video_url": {"url": data_uri},
         })
       elif part.inline_data.mime_type.startswith("audio"):
-        # Use full MIME type (e.g., "audio/mpeg") for providers that validate it
-        format_type = part.inline_data.mime_type
         content_objects.append({
             "type": "audio_url",
-            "audio_url": {"url": data_uri, "format": format_type},
+            "audio_url": {"url": data_uri},
         })
       elif part.inline_data.mime_type == "application/pdf":
-        format_type = part.inline_data.mime_type
         content_objects.append({
             "type": "file",
-            "file": {"file_data": data_uri, "format": format_type},
+            "file": {"file_data": data_uri},
         })
       else:
         raise ValueError("LiteLlm(BaseLlm) does not support this content part.")
@@ -348,8 +343,6 @@ def _get_content(
       file_object: ChatCompletionFileUrlObject = {
           "file_id": part.file_data.file_uri,
       }
-      if part.file_data.mime_type:
-        file_object["format"] = part.file_data.mime_type
       content_objects.append({
           "type": "file",
           "file": file_object,
@@ -565,7 +558,9 @@ def _model_response_to_generate_content_response(
   if not message:
     raise ValueError("No message in response")
 
-  llm_response = _message_to_generate_content_response(message)
+  llm_response = _message_to_generate_content_response(
+      message, model_version=response.model
+  )
   if finish_reason:
     # If LiteLLM already provides a FinishReason enum (e.g., for Gemini), use
     # it directly. Otherwise, map the finish_reason string to the enum.
@@ -586,13 +581,14 @@ def _model_response_to_generate_content_response(
 
 
 def _message_to_generate_content_response(
-    message: Message, is_partial: bool = False
+    message: Message, *, is_partial: bool = False, model_version: str = None
 ) -> LlmResponse:
   """Converts a litellm message to LlmResponse.
 
   Args:
     message: The message to convert.
     is_partial: Whether the message is partial.
+    model_version: The model version used to generate the response.
 
   Returns:
     The LlmResponse.
@@ -613,7 +609,9 @@ def _message_to_generate_content_response(
         parts.append(part)
 
   return LlmResponse(
-      content=types.Content(role="model", parts=parts), partial=is_partial
+      content=types.Content(role="model", parts=parts),
+      partial=is_partial,
+      model_version=model_version,
   )
 
 
@@ -957,6 +955,7 @@ class LiteLlm(BaseLlm):
                     content=chunk.text,
                 ),
                 is_partial=True,
+                model_version=part.model,
             )
           elif isinstance(chunk, UsageMetadataChunk):
             usage_metadata = types.GenerateContentResponseUsageMetadata(
@@ -988,14 +987,16 @@ class LiteLlm(BaseLlm):
                         role="assistant",
                         content=text,
                         tool_calls=tool_calls,
-                    )
+                    ),
+                    model_version=part.model,
                 )
             )
             text = ""
             function_calls.clear()
           elif finish_reason == "stop" and text:
             aggregated_llm_response = _message_to_generate_content_response(
-                ChatCompletionAssistantMessage(role="assistant", content=text)
+                ChatCompletionAssistantMessage(role="assistant", content=text),
+                model_version=part.model,
             )
             text = ""
 

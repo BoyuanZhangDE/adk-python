@@ -90,6 +90,7 @@ LLM_REQUEST_WITH_FUNCTION_DECLARATION = LlmRequest(
 
 STREAMING_MODEL_RESPONSE = [
     ModelResponse(
+        model="test_model",
         choices=[
             StreamingChoices(
                 finish_reason=None,
@@ -98,9 +99,10 @@ STREAMING_MODEL_RESPONSE = [
                     content="zero, ",
                 ),
             )
-        ]
+        ],
     ),
     ModelResponse(
+        model="test_model",
         choices=[
             StreamingChoices(
                 finish_reason=None,
@@ -109,9 +111,10 @@ STREAMING_MODEL_RESPONSE = [
                     content="one, ",
                 ),
             )
-        ]
+        ],
     ),
     ModelResponse(
+        model="test_model",
         choices=[
             StreamingChoices(
                 finish_reason=None,
@@ -120,9 +123,10 @@ STREAMING_MODEL_RESPONSE = [
                     content="two:",
                 ),
             )
-        ]
+        ],
     ),
     ModelResponse(
+        model="test_model",
         choices=[
             StreamingChoices(
                 finish_reason=None,
@@ -141,9 +145,10 @@ STREAMING_MODEL_RESPONSE = [
                     ],
                 ),
             )
-        ]
+        ],
     ),
     ModelResponse(
+        model="test_model",
         choices=[
             StreamingChoices(
                 finish_reason=None,
@@ -162,14 +167,15 @@ STREAMING_MODEL_RESPONSE = [
                     ],
                 ),
             )
-        ]
+        ],
     ),
     ModelResponse(
+        model="test_model",
         choices=[
             StreamingChoices(
                 finish_reason="tool_use",
             )
-        ]
+        ],
     ),
 ]
 
@@ -342,6 +348,7 @@ STREAM_WITH_EMPTY_CHUNK = [
 @pytest.fixture
 def mock_response():
   return ModelResponse(
+      model="test_model",
       choices=[
           Choices(
               message=ChatCompletionAssistantMessage(
@@ -359,7 +366,7 @@ def mock_response():
                   ],
               )
           )
-      ]
+      ],
   )
 
 
@@ -529,6 +536,7 @@ async def test_generate_content_async(mock_acompletion, lite_llm_instance):
         "test_arg": "test_value"
     }
     assert response.content.parts[1].function_call.id == "test_tool_call_id"
+    assert response.model_version == "test_model"
 
   mock_acompletion.assert_called_once()
 
@@ -1107,7 +1115,7 @@ def test_content_to_message_param_user_message_with_file_uri():
   assert message["content"][0]["text"] == "Summarize this file."
   assert message["content"][1]["type"] == "file"
   assert message["content"][1]["file"]["file_id"] == "gs://bucket/document.pdf"
-  assert message["content"][1]["file"]["format"] == "application/pdf"
+  assert "format" not in message["content"][1]["file"]
 
 
 def test_content_to_message_param_user_message_file_uri_only():
@@ -1126,7 +1134,7 @@ def test_content_to_message_param_user_message_file_uri_only():
   assert isinstance(message["content"], list)
   assert message["content"][0]["type"] == "file"
   assert message["content"][0]["file"]["file_id"] == "gs://bucket/only.pdf"
-  assert message["content"][0]["file"]["format"] == "application/pdf"
+  assert "format" not in message["content"][0]["file"]
 
 
 def test_content_to_message_param_multi_part_function_response():
@@ -1262,6 +1270,19 @@ def test_message_to_generate_content_response_tool_call():
   assert response.content.parts[0].function_call.id == "test_tool_call_id"
 
 
+def test_message_to_generate_content_response_with_model():
+  message = ChatCompletionAssistantMessage(
+      role="assistant",
+      content="Test response",
+  )
+  response = _message_to_generate_content_response(
+      message, model_version="gemini-2.5-pro"
+  )
+  assert response.content.role == "model"
+  assert response.content.parts[0].text == "Test response"
+  assert response.model_version == "gemini-2.5-pro"
+
+
 def test_get_content_text():
   parts = [types.Part.from_text(text="Test text")]
   content = _get_content(parts)
@@ -1278,7 +1299,7 @@ def test_get_content_image():
       content[0]["image_url"]["url"]
       == "data:image/png;base64,dGVzdF9pbWFnZV9kYXRh"
   )
-  assert content[0]["image_url"]["format"] == "image/png"
+  assert "format" not in content[0]["image_url"]
 
 
 def test_get_content_video():
@@ -1291,7 +1312,7 @@ def test_get_content_video():
       content[0]["video_url"]["url"]
       == "data:video/mp4;base64,dGVzdF92aWRlb19kYXRh"
   )
-  assert content[0]["video_url"]["format"] == "video/mp4"
+  assert "format" not in content[0]["video_url"]
 
 
 def test_get_content_pdf():
@@ -1304,7 +1325,7 @@ def test_get_content_pdf():
       content[0]["file"]["file_data"]
       == "data:application/pdf;base64,dGVzdF9wZGZfZGF0YQ=="
   )
-  assert content[0]["file"]["format"] == "application/pdf"
+  assert "format" not in content[0]["file"]
 
 
 def test_get_content_file_uri():
@@ -1317,7 +1338,7 @@ def test_get_content_file_uri():
   content = _get_content(parts)
   assert content[0]["type"] == "file"
   assert content[0]["file"]["file_id"] == "gs://bucket/document.pdf"
-  assert content[0]["file"]["format"] == "application/pdf"
+  assert "format" not in content[0]["file"]
 
 
 def test_get_content_audio():
@@ -1330,7 +1351,7 @@ def test_get_content_audio():
       content[0]["audio_url"]["url"]
       == "data:audio/mpeg;base64,dGVzdF9hdWRpb19kYXRh"
   )
-  assert content[0]["audio_url"]["format"] == "audio/mpeg"
+  assert "format" not in content[0]["audio_url"]
 
 
 def test_to_litellm_role():
@@ -1556,16 +1577,20 @@ async def test_generate_content_async_stream(
   assert len(responses) == 4
   assert responses[0].content.role == "model"
   assert responses[0].content.parts[0].text == "zero, "
+  assert responses[0].model_version == "test_model"
   assert responses[1].content.role == "model"
   assert responses[1].content.parts[0].text == "one, "
+  assert responses[1].model_version == "test_model"
   assert responses[2].content.role == "model"
   assert responses[2].content.parts[0].text == "two:"
+  assert responses[2].model_version == "test_model"
   assert responses[3].content.role == "model"
   assert responses[3].content.parts[-1].function_call.name == "test_function"
   assert responses[3].content.parts[-1].function_call.args == {
       "test_arg": "test_value"
   }
   assert responses[3].content.parts[-1].function_call.id == "test_tool_call_id"
+  assert responses[3].model_version == "test_model"
   mock_completion.assert_called_once()
 
   _, kwargs = mock_completion.call_args
