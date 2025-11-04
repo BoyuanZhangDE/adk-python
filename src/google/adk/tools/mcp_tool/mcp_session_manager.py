@@ -114,7 +114,7 @@ def retry_on_closed_resource(func):
 
   When MCP session was closed, the decorator will automatically retry the
   action once. The create_session method will handle creating a new session
-  if the old one was disconnected.`
+  if the old one was disconnected.
 
   Args:
       func: The function to decorate.
@@ -241,7 +241,7 @@ class MCPSessionManager:
 
     return base_headers
 
-  def _is_session_disconnected(self, session: ClientSession) -> bool:
+  async def _is_session_disconnected(self, session: ClientSession) -> bool:
     """Checks if a session is disconnected or closed.
 
     Args:
@@ -256,7 +256,7 @@ class MCPSessionManager:
       if isinstance(response, EmptyResult):
         return False
       else:
-        logger.debug(f'Session ping returns with illegal response {response}, treating as disconnected')
+        logger.debug(f'Session ping returns illegal response {response}, treating as disconnected')
         return True
 
     except (asyncio.TimeoutError, anyio.ClosedResourceError, Exception) as e:
